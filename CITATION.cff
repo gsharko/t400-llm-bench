@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use these scripts or this dataset, please cite both the archive and the paper."
+title: "t400-llm-bench: Benchmark suite and dataset for local LLM inference on entry-level 4 GB GPUs (NVIDIA T400)"
+type: software
+authors:
+  - family-names: "Sharko"
+    given-names: "Genci"
+    affiliation: "Measurement Laboratory, Faculty of Electrical Engineering, Polytechnic University of Tirana"
+    # orcid: "https://orcid.org/XXXX-XXXX-XXXX-XXXX"   # TODO: shto ORCID
+version: "1.0.0"
+date-released: "2026-07-04"
+license: MIT
+repository-code: "https://github.com/gsharko/t400-llm-bench"   # TODO pas krijimit
+doi: "10.5281/zenodo.XXXXXXX"                                      # TODO pas Zenodo
+keywords:
+  - large language models
+  - GPU benchmarking
+  - edge inference
+  - quantization
+  - energy efficiency
+  - Ollama
+preferred-citation:
+  type: article
+  title: "Benchmarking Local LLM Inference on Entry-Level 4 GB GPUs: Throughput, Energy, and Quantization Trade-offs on the NVIDIA T400 for Resource-Constrained Laboratories"
+  authors:
+    - family-names: "Sharko"
+      given-names: "Genci"
+  year: 2026
+  # journal/conference: TODO pas pranimit

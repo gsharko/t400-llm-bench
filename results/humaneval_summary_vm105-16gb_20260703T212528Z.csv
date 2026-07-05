@@ -1,0 +1,2 @@
+model,n,pass_at_1_pct,num_predict,num_ctx,vram_peak_mb,gpu_offload_pct,gen_tps_median,wall_min
+qwen2.5-coder:7b,164,85.4,512,2048,2596,47,3.5,153.0
