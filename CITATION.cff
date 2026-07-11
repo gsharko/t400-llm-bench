@@ -1,29 +1,36 @@
 cff-version: 1.2.0
-message: "If you use these scripts or this dataset, please cite both the archive and the paper."
-title: "t400-llm-bench: Benchmark suite and dataset for local LLM inference on entry-level 4 GB GPUs (NVIDIA T400)"
+message: "If you use this benchmark suite or dataset, please cite the paper and this repository."
+title: "t400-llm-bench: Benchmark suite and dataset for local LLM inference on an entry-level 4 GB GPU (NVIDIA T400)"
 type: software
 authors:
   - family-names: "Sharko"
     given-names: "Genci"
-    affiliation: "Measurement Laboratory, Faculty of Electrical Engineering, Polytechnic University of Tirana"
-    # orcid: "https://orcid.org/XXXX-XXXX-XXXX-XXXX"   # TODO: shto ORCID
+    orcid: "https://orcid.org/0009-0008-0051-9589"
+    affiliation: "Faculty of Electrical Engineering, Polytechnic University of Tirana"
+  - family-names: "Dasho"
+    given-names: "Anni"
+    orcid: "https://orcid.org/0009-0000-6520-7449"
+    affiliation: "Luarasi University, Tirana"
+  - family-names: "Spahiu"
+    given-names: "Aida"
+    orcid: "https://orcid.org/0000-0001-9838-4871"
+    affiliation: "Faculty of Electrical Engineering, Polytechnic University of Tirana"
+  - family-names: "Harizaj"
+    given-names: "Miranda"
+    orcid: "https://orcid.org/0000-0001-6107-7288"
+    affiliation: "Polytechnic University of Tirana"
+  - family-names: "Myrtellari"
+    given-names: "Arnisa"
+    orcid: "https://orcid.org/0009-0005-7279-1352"
+    affiliation: "Polytechnic University of Tirana"
 version: "1.0.0"
-date-released: "2026-07-04"
+date-released: "2026-07-05"
 license: MIT
-repository-code: "https://github.com/gsharko/t400-llm-bench"   # TODO pas krijimit
-doi: "10.5281/zenodo.XXXXXXX"                                      # TODO pas Zenodo
+repository-code: "https://github.com/gsharko/t400-llm-bench"
+doi: "10.5281/zenodo.21202755"
 keywords:
   - large language models
   - GPU benchmarking
   - edge inference
   - quantization
   - energy efficiency
-  - Ollama
-preferred-citation:
-  type: article
-  title: "Benchmarking Local LLM Inference on Entry-Level 4 GB GPUs: Throughput, Energy, and Quantization Trade-offs on the NVIDIA T400 for Resource-Constrained Laboratories"
-  authors:
-    - family-names: "Sharko"
-      given-names: "Genci"
-  year: 2026
-  # journal/conference: TODO pas pranimit
