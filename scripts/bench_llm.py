@@ -17,7 +17,7 @@ E KONTROLLUAR: prandaj kalojmë `num_ctx` eksplicit te Ollama. Përndryshe Ollam
 alokon 4096 by default dhe efekti i kontekstit del i sheshtë. Gjatësia e prompt-it
 (input) mbahet fikse (--prompt-tokens); num_ctx varion (--ctx).
 
-Referencë: projects/Papers/Paper1-LLM-Benchmark-T400.md
+Referencë: projects/research/Papers/Paper1-LLM-Benchmark-T400.md
 
 Dizajni: script-i xhiron NË VM-në me GPU (localhost Ollama + nvidia-smi lokal),
 që GPU-samples dhe kërkesat të kenë të njëjtin timestamp. Mund të xhirojë edhe
