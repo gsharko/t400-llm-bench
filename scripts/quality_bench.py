@@ -1,32 +1,32 @@
 #!/usr/bin/env python3
 """
-quality_bench.py — Benchmark cilësie për nivele kuantizimi (Ollama, GPU T400 4GB)
+quality_bench.py — Task-quality benchmark across quantization levels (Ollama, NVIDIA T400 4 GB)
 
-Plotëson dimensionin e cilësisë të RQ1: sa saktësi sakrifikohet nga kuantizimi
-për të hyrë në 4GB VRAM? Krahason tags kuantizimi të të njëjtit model
-(p.sh. q4_K_M vs q8_0) në dy benchmark-e:
+Covers the quality dimension of RQ1: how much accuracy is sacrificed by the quantization
+needed to fit into 4 GB of VRAM? It compares quantization tags of the same model
+(e.g. q4_K_M vs q8_0) on two benchmarks:
 
-  mmlu      — nën-set MMLU (multiple choice, A/B/C/D), saktësi %  [modele të përgjithshme]
-  humaneval — HumanEval pass@1 (gjenerim + ekzekutim testesh)     [modele coder]
+  mmlu      — MMLU subset (multiple choice, A/B/C/D), accuracy %  [general-purpose models]
+  humaneval — HumanEval pass@1 (generation + test execution)      [code models]
 
-Për çdo konfigurim regjistron edhe VRAM peak, % ofloadim dhe throughput —
-që cilësia të lidhet direkt me "a hyn në 4GB" (frontiera e artikullit).
+For every configuration it also records peak VRAM, offload percentage and throughput, so
+that quality can be related directly to "does it fit in 4 GB" (the frontier of the paper).
 
-Dizajni ndjek bench_llm.py: stdlib-only, streaming API, temperature=0/seed=42,
-CSV me label+timestamp në results/. Xhiron NË VM-në me GPU (localhost Ollama +
-nvidia-smi lokal); remote → --no-gpu.
+The design follows bench_llm.py: standard library only, streaming API, temperature=0 and
+seed=42, CSV output with label+timestamp under results/. Runs INSIDE the GPU-equipped VM
+(local Ollama + local nvidia-smi); for remote use pass --no-gpu.
 
-Të dhënat shkarkohen automatikisht në --data-dir (default: data/):
-  MMLU:      https://people.eecs.berkeley.edu/~hendrycks/data.tar (~160MB, CSV)
+Datasets are downloaded automatically into --data-dir (default: data/):
+  MMLU:      https://people.eecs.berkeley.edu/~hendrycks/data.tar (~160 MB, CSV)
   HumanEval: https://github.com/openai/human-eval/raw/master/data/HumanEval.jsonl.gz
 
-⚠️ HumanEval EKZEKUTON kod të gjeneruar nga modeli (subprocess me timeout).
-   Xhiroje vetëm brenda VM-së së lab-it, kurrë në host produktiv.
+⚠️ HumanEval EXECUTES model-generated code (subprocess with a timeout).
+   Run it only inside a disposable laboratory VM, never on a production host.
 
-Përdorimi tipik (shih PROTOCOL-Quality.md):
+Typical usage (see PROTOCOL-Quality.md):
   python3 quality_bench.py mmlu --models qwen2.5:1.5b-instruct-q4_K_M qwen2.5:1.5b-instruct-q8_0 \
-      --label vm105-16gb
-  python3 quality_bench.py humaneval --models qwen2.5-coder:7b --label vm105-16gb
+      --label 16gb
+  python3 quality_bench.py humaneval --models qwen2.5-coder:7b --label 16gb
 
 Autor: AI-LAB / FIE Measurement Lab
 """
@@ -53,18 +53,18 @@ from urllib import request as urlrequest
 try:
     from bench_llm import GpuSampler, gpu_offload_pct, median_iqr
 except ImportError:
-    print("Gabim: quality_bench.py duhet të rrijë në të njëjtin folder me bench_llm.py",
+    print("Error: quality_bench.py must live in the same directory as bench_llm.py",
           file=sys.stderr)
     raise
 
 # ----------------------------------------------------------------------------
-# Konfigurim default
+# Default configuration
 # ----------------------------------------------------------------------------
 
 MMLU_URL = "https://people.eecs.berkeley.edu/~hendrycks/data.tar"
 HUMANEVAL_URL = "https://github.com/openai/human-eval/raw/master/data/HumanEval.jsonl.gz"
 
-# Nën-set MMLU: lëndë STEM afër profilit FIE + një jo-STEM për ekuilibër
+# MMLU subset: STEM subjects close to an engineering curriculum, plus one non-STEM for balance
 DEFAULT_SUBJECTS = [
     "electrical_engineering",
     "college_computer_science",
@@ -73,10 +73,10 @@ DEFAULT_SUBJECTS = [
     "formal_logic",
     "high_school_statistics",
 ]
-DEFAULT_LIMIT_PER_SUBJECT = 100   # kufi pyetjesh/lëndë (bound kohe në modele të ofloaduara)
-DEFAULT_NUM_CTX = 2048            # mjafton për 0–5 shot; fiks që VRAM të jetë i krahasueshëm
-DEFAULT_HE_NUM_PREDICT = 512      # token max për zgjidhje HumanEval
-EXEC_TIMEOUT_S = 15               # timeout ekzekutimi për test HumanEval
+DEFAULT_LIMIT_PER_SUBJECT = 100   # question cap per subject (bounds runtime on offloaded models)
+DEFAULT_NUM_CTX = 2048            # enough for 0-5 shot; fixed so VRAM stays comparable
+DEFAULT_HE_NUM_PREDICT = 512      # max tokens for a HumanEval solution
+EXEC_TIMEOUT_S = 15               # execution timeout for a HumanEval test
 
 LETTERS = ["A", "B", "C", "D"]
 
@@ -221,12 +221,12 @@ def mmlu_prompt(item: dict, subject: str, fewshot: list[dict]) -> str:
     return "\n".join(parts)
 
 
-# Rendi ka rëndësi: fraza eksplicite > shkronjë në fillim > shkronja e parë kudo
+# Order matters: explicit phrase > letter at the start > first letter anywhere
 _ANS_PATTERNS = [
     re.compile(r"ANSWER\s+IS\s*:?\s*\(?([ABCD])\b"),
     re.compile(r"ANSWER\s*:?\s*\(?([ABCD])\b"),
-    re.compile(r"^\s*\(?([ABCD])\)?\s*[.:,]?\s*$"),   # rresht me vetëm shkronjën
-    re.compile(r"^\s*\(?([ABCD])\)?[.:,\s]"),          # fillon me shkronjën
+    re.compile(r"^\s*\(?([ABCD])\)?\s*[.:,]?\s*$"),   # line containing only the letter
+    re.compile(r"^\s*\(?([ABCD])\)?[.:,\s]"),          # starts with the letter
     re.compile(r"\b([ABCD])\b"),
 ]
 
@@ -268,7 +268,7 @@ def run_mmlu(args, sampler: GpuSampler, outdir: Path, ts: str, tag: str):
     try:
         for model in args.models:
             print(f"\n### MMLU: {model} (num_ctx={args.num_ctx}, fewshot={args.fewshot})")
-            # warm-up: ngarkon modelin që matjet perf të jenë warm
+            # warm-up: loads the model so the performance metrics are measured warm
             try:
                 ollama_generate(args.host, model, "Answer: A or B? Answer:", 4, args.num_ctx)
             except Exception as e:  # noqa: BLE001
@@ -303,7 +303,7 @@ def run_mmlu(args, sampler: GpuSampler, outdir: Path, ts: str, tag: str):
                     all_rows.append(r)
                 acc = 100.0 * n_ok / len(test) if test else float("nan")
                 print(f"  {subject:28s} n={len(test):3d}  acc={acc:5.1f}%")
-            # metrika perf/VRAM për konfigurimin
+            # performance/VRAM metrics for this configuration
             win = sampler.window(t_cfg0, time.time())
             perf[model] = {
                 "vram_peak_mb": max((s.mem_used for s in win), default=float("nan")),
@@ -373,8 +373,8 @@ _PRELUDE = ("from typing import *\nimport math\nimport re\nimport collections\n"
 
 
 def extract_code(text: str, problem: dict) -> str:
-    """Nxjerr kodin: blloku ```python``` nëse ka; ndryshe teksti i plotë.
-    Nëse s'përmban def <entry_point>, trajtohet si vazhdim i prompt-it (completion-style)."""
+    """Extract the code: the ```python``` block if present, otherwise the whole text.
+    If it lacks def <entry_point>, it is treated as a prompt continuation (completion-style)."""
     m = _CODE_BLOCK_RE.search(text)
     code = m.group(1) if m else text
     if f"def {problem['entry_point']}" not in code:
@@ -383,7 +383,7 @@ def extract_code(text: str, problem: dict) -> str:
 
 
 def run_test(code: str, problem: dict, timeout: int = EXEC_TIMEOUT_S) -> tuple[bool, str]:
-    """Ekzekuton kodin + testet zyrtare në subprocess me timeout. (pass, arsye)."""
+    """Execute the code + official tests in a subprocess with a timeout. Returns (pass, reason)."""
     program = (_PRELUDE + code + "\n\n" + problem["test"] +
                f"\n\ncheck({problem['entry_point']})\n")
     try:
@@ -522,7 +522,7 @@ def main():
     ph = sub.add_parser("humaneval", help="HumanEval pass@1 (coder)")
     common(ph)
     ph.add_argument("--num-predict", type=int, default=DEFAULT_HE_NUM_PREDICT)
-    ph.add_argument("--limit", type=int, default=0, help="Kufizo N problemet e para (smoke test)")
+    ph.add_argument("--limit", type=int, default=0, help="Limit to the first N problems (smoke test)")
     ph.add_argument("--humaneval-url", default=HUMANEVAL_URL)
 
     args = ap.parse_args()

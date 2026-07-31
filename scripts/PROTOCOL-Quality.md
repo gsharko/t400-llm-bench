@@ -1,49 +1,49 @@
-# Protokoll — Benchmark cilësie kuantizimi (RQ1, dimensioni i cilësisë)
+# Protocol — Quantization quality benchmark (RQ1, quality dimension)
 
-**Qëllimi:** të matet sa saktësi sakrifikohet nga kuantizimi për të hyrë në 4GB VRAM,
-dhe të përgjigjemi pyetjes praktike të një lab-i me T400: **model më i madh @Q4 apo
-model më i vogël @Q8/FP16?** Script: `quality_bench.py` (rri në të njëjtin folder me
-`bench_llm.py`, se importon `GpuSampler`).
+**Purpose:** measure how much task accuracy is sacrificed by the quantization needed to
+fit into 4 GB of VRAM, and answer the practical question facing a laboratory with a T400:
+**a larger model at Q4, or a smaller model at Q8/FP16?** Script: `quality_bench.py`
+(keep it in the same directory as `bench_llm.py`, which it imports `GpuSampler` from).
 
-**Ku xhirohet:** VM105 (`lab@192.168.20.70`), si benchmark-et e tjera — localhost Ollama +
-nvidia-smi lokal. Host i qetë gjatë matjes (higjiena e §Metodologji).
+**Where it runs:** inside the GPU-equipped benchmark VM — local Ollama endpoint plus a
+local `nvidia-smi`. Keep the host quiet during measurement (see the methodology section
+of the paper).
 
 ---
 
-## 1. Matrica e konfigurimeve
+## 1. Configuration matrix
 
-### MMLU (modele të përgjithshme) — 6 lëndë STEM × 100 pyetje = 600 pyetje, 0-shot
+### MMLU (general-purpose models) — 6 STEM subjects × 100 questions = 600 questions, 0-shot
 
-| Tag | Madhësi disk | Parashikim @num_ctx=2048 | Pse |
+| Tag | Size on disk | Prediction @num_ctx=2048 | Rationale |
 |---|---|---|---|
-| `qwen2.5:1.5b-instruct-q4_K_M` | ~1.0GB | 100% GPU | baseline (i njëjti quant si matjet perf) |
-| `qwen2.5:1.5b-instruct-q8_0` | ~1.9GB | 100% GPU | quant i lartë që ende hyn |
-| `qwen2.5:1.5b-instruct-fp16` | ~3.1GB | kufi/ofloadim i lehtë | tavani i cilësisë së 1.5B |
-| `phi3.5:3.8b-mini-instruct-q4_K_M` | ~2.4GB | ~55% GPU | modeli më i madh @Q4 — krahasimi kyç |
-| `phi3.5:3.8b-mini-instruct-q8_0` | ~4.1GB | ofloadim i fortë | quant i lartë që NUK hyn |
+| `qwen2.5:1.5b-instruct-q4_K_M` | ~1.0 GB | 100% GPU | baseline (same quant as the performance runs) |
+| `qwen2.5:1.5b-instruct-q8_0` | ~1.9 GB | 100% GPU | higher precision that still fits |
+| `qwen2.5:1.5b-instruct-fp16` | ~3.1 GB | boundary / light offloading | quality ceiling of the 1.5B model |
+| `phi3.5:3.8b-mini-instruct-q4_K_M` | ~2.4 GB | ~55% GPU | largest model at Q4 — the key comparison |
+| `phi3.5:3.8b-mini-instruct-q8_0` | ~4.1 GB | heavy offloading | higher precision that does NOT fit |
 
-Krahasimi qendror: **1.5B@fp16 (~3.1GB) vs 3.8B@Q4 (~2.4GB)** — dy rrugë të ndryshme
-për të shpenzuar të njëjtin buxhet VRAM.
+Central comparison: **1.5B@FP16 (~3.1 GB) vs 3.8B@Q4 (~2.4 GB)** — two different ways of
+spending the same VRAM budget.
 
-### HumanEval (coder) — 164 probleme, pass@1, greedy
+### HumanEval (code models) — 164 problems, pass@1, greedy
 
-| Tag | Madhësi disk | Parashikim | Pse |
+| Tag | Size on disk | Prediction | Rationale |
 |---|---|---|---|
-| `qwen2.5-coder:1.5b-instruct-q4_K_M` | ~1.0GB | 100% GPU | coder-i që hyn plotësisht |
-| `qwen2.5-coder:1.5b-instruct-q8_0` | ~1.9GB | 100% GPU | efekti i quant-it te kodi |
-| `qwen2.5-coder:7b` (= 7b-instruct-q4_K_M) | ~4.7GB | ~47% GPU | i njëjti model si matjet perf |
-| `qwen2.5-coder:7b-instruct-q8_0` *(ops.)* | ~8.1GB | ofloadim i fortë | vetëm nëse ka natë të lirë |
+| `qwen2.5-coder:1.5b-instruct-q4_K_M` | ~1.0 GB | 100% GPU | code model that fits entirely |
+| `qwen2.5-coder:1.5b-instruct-q8_0` | ~1.9 GB | 100% GPU | effect of quantization on code |
+| `qwen2.5-coder:7b` (= 7b-instruct-q4_K_M) | ~4.7 GB | ~47% GPU | same model as the performance runs |
+| `qwen2.5-coder:7b-instruct-q8_0` *(optional)* | ~8.1 GB | heavy offloading | only if spare overnight time is available |
 
-> ⚠️ Madhësitë janë të përafërta — verifiko me `ollama list` pas pull.
-> Nëse ndonjë tag s'ekziston më në regjistër, shih `ollama.com/library/<model>/tags`.
+> ⚠️ Sizes are approximate — verify with `ollama list` after pulling.
+> If a tag no longer exists in the registry, check `ollama.com/library/<model>/tags`.
 
-## 2. Përgatitja (një herë)
+## 2. Preparation (once)
 
 ```bash
-ssh lab@192.168.20.70
-cd ~/benchmark-t400        # ku janë bench_llm.py + quality_bench.py
+cd /path/to/benchmark        # directory holding bench_llm.py + quality_bench.py
 
-# Pull tags (~12GB total pa 7b-q8; disku i VM105 = 82GB, ok)
+# Pull tags (~12 GB total excluding 7b-q8)
 ollama pull qwen2.5:1.5b-instruct-q4_K_M
 ollama pull qwen2.5:1.5b-instruct-q8_0
 ollama pull qwen2.5:1.5b-instruct-fp16
@@ -51,12 +51,13 @@ ollama pull phi3.5:3.8b-mini-instruct-q4_K_M
 ollama pull phi3.5:3.8b-mini-instruct-q8_0
 ollama pull qwen2.5-coder:1.5b-instruct-q4_K_M
 ollama pull qwen2.5-coder:1.5b-instruct-q8_0
-# opsionale (8.1GB): ollama pull qwen2.5-coder:7b-instruct-q8_0
+# optional (8.1 GB): ollama pull qwen2.5-coder:7b-instruct-q8_0
 ```
 
-Të dhënat (MMLU ~160MB tar + HumanEval ~50KB) shkarkohen vetë te `data/` në run-in e parë.
+The datasets (MMLU ~160 MB tar + HumanEval ~50 KB) are downloaded automatically into
+`data/` on the first run.
 
-**Smoke test (~2 min)** para run-it të plotë:
+**Smoke test (~2 min)** before the full run:
 
 ```bash
 python3 quality_bench.py mmlu --models qwen2.5:1.5b-instruct-q4_K_M \
@@ -65,63 +66,64 @@ python3 quality_bench.py humaneval --models qwen2.5-coder:1.5b-instruct-q4_K_M \
     --limit 3 --label smoke
 ```
 
-Kontrollo: `pred` jo bosh te mmlu_rows (nxjerrja e shkronjës punon), të paktën 1 pass
-te humaneval, kolonat vram/offload jo bosh te summary.
+Check that: `pred` is non-empty in `mmlu_rows` (letter extraction works), at least one
+problem passes in HumanEval, and the vram/offload columns are populated in the summary.
 
-## 3. Run-et e plota
+## 3. Full runs
 
 ```bash
-# A. MMLU (~4–6 orë total; phi3.5-q8 është pjesa e ngadaltë) — xhiro me nohup/tmux
+# A. MMLU (~4-6 h total; phi3.5-q8 is the slow part) — run under nohup/tmux
 nohup python3 quality_bench.py mmlu \
     --models qwen2.5:1.5b-instruct-q4_K_M qwen2.5:1.5b-instruct-q8_0 \
              qwen2.5:1.5b-instruct-fp16 \
              phi3.5:3.8b-mini-instruct-q4_K_M phi3.5:3.8b-mini-instruct-q8_0 \
-    --label vm105-16gb > mmlu_run.log 2>&1 &
+    --label 16gb > mmlu_run.log 2>&1 &
 
-# B. HumanEval coder të vegjël (~1–1.5 orë)
+# B. HumanEval, small code models (~1-1.5 h)
 nohup python3 quality_bench.py humaneval \
     --models qwen2.5-coder:1.5b-instruct-q4_K_M qwen2.5-coder:1.5b-instruct-q8_0 \
-    --label vm105-16gb > he_small_run.log 2>&1 &
+    --label 16gb > he_small_run.log 2>&1 &
 
-# C. HumanEval 7b @Q4 (~4–6 orë, natën)
+# C. HumanEval 7b @Q4 (~4-6 h, overnight)
 nohup python3 quality_bench.py humaneval --models qwen2.5-coder:7b \
-    --label vm105-16gb > he_7b_run.log 2>&1 &
+    --label 16gb > he_7b_run.log 2>&1 &
 
-# D. (ops.) 7b @Q8 (~7–10 orë, natën) — vetëm nëse duam pikën e katërt të kurbës
+# D. (optional) 7b @Q8 (~7-10 h, overnight) — only for a fourth point on the curve
 ```
 
-Xhiroji **A, B, C në seri** (jo paralel — konkurrenca prish matjet perf/VRAM).
-Kohët janë estimime nga throughput-et e matura; phi3.5-q8 dhe fp16 s'kanë matje
-paraprake, mund të devijojnë.
+Run **A, B and C in series**, not in parallel — concurrency corrupts the performance and
+VRAM measurements. The durations are estimates derived from the measured throughputs;
+phi3.5-q8 and fp16 have no prior measurements and may deviate.
 
-⚠️ **Siguria:** `humaneval` ekzekuton kod të gjeneruar nga modeli (subprocess,
-timeout 15s, pa sandbox shtesë). VM105 është ambient i pranueshëm; mos e xhiro
-kurrë në pve2 direkt.
+⚠️ **Safety:** `humaneval` executes model-generated code (subprocess, 15 s timeout, no
+additional sandbox). Run it only inside a disposable VM — never directly on the
+hypervisor host.
 
-## 4. Çfarë kthehet për analizë
+## 4. Output for analysis
 
-Nga `results/`:
+From `results/`:
 
-- `mmlu_summary_vm105-16gb_<ts>.csv` — saktësi për lëndë + `OVERALL_micro/macro`
-  + VRAM/offload/tps për tag
-- `mmlu_rows_*.csv` — për-pyetje (audit i nxjerrjes së përgjigjes)
-- `humaneval_summary_*.csv` — pass@1 + VRAM/offload/tps për tag
-- `humaneval_rows_*.csv` — për-problem (fail reasons)
+- `mmlu_summary_<label>_<ts>.csv` — per-subject accuracy plus `OVERALL_micro/macro`,
+  with VRAM/offload/tps per tag
+- `mmlu_rows_*.csv` — per-question records (audit trail for answer extraction)
+- `humaneval_summary_*.csv` — pass@1 plus VRAM/offload/tps per tag
+- `humaneval_rows_*.csv` — per-problem records (failure reasons)
 
-Pastaj (sesioni tjetër me Claude): §4.9 te `Results-draft.md` + **Fig. 9**
-(saktësi vs VRAM buxhet — kurba cilësi/madhësi/quant) + **Fig. 10** (pass@1 vs quant),
-dhe integrimi te RQ1.
+These feed the quantization-quality section of the paper and the corresponding
+quality-versus-footprint figures.
 
-## 5. Vendime metodologjike (për Methodology të artikullit)
+## 5. Methodological decisions (as reported in the paper's Methodology)
 
-- **0-shot, jo 5-shot:** modelet janë instruct; 0-shot ul kohën ~3× në modelet e
-  ofloaduara dhe krahasimi mes quant-eve mbetet i brendshëm (i njëjti protokoll për
-  të gjithë). `--fewshot 5` ekziston si opsion nëse reviewer-i e kërkon.
-- **Nën-set STEM:** 6 lëndë afër audiencës (lab inxhinierik), jo 57 lëndët e plota —
-  raportohet si "MMLU-STEM subset", me listën e lëndëve në appendix.
-- **Greedy (temperature=0, seed=42):** deterministik, pass@1 pa sampling — i njëjti
-  parim si matjet perf.
-- **num_ctx=2048 fiks:** i njëjti buxhet KV për çdo tag, që dallimi në VRAM të vijë
-  vetëm nga pesha e quant-it.
-- **Kufizim për §Limitations:** MMLU subset ≠ MMLU i plotë; HumanEval me prelude
-  importesh standarde (typing/math/re/…); ekstraktim me code-block regex.
+- **0-shot, not 5-shot:** the models are instruction-tuned; 0-shot cuts runtime ~3× on
+  offloaded models and the comparison across quantizations remains internally
+  consistent (identical protocol for every tag). `--fewshot 5` is available as an
+  option if a reviewer requests it.
+- **STEM subset:** 6 subjects close to the target audience (an engineering laboratory)
+  rather than all 57 — reported as "MMLU-STEM subset", with the subject list stated in
+  the paper.
+- **Greedy (temperature=0, seed=42):** deterministic, pass@1 without sampling — the same
+  principle as the performance measurements.
+- **Fixed num_ctx=2048:** an identical KV budget for every tag, so that differences in
+  VRAM come only from the weight precision.
+- **Stated limitations:** the MMLU subset is not full MMLU; HumanEval uses a
+  standard-imports prelude (typing/math/re/…) and code-block regex extraction.

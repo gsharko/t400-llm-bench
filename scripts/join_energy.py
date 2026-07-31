@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-join_energy.py — Bashko requests CSV (benchmark) me power CSV (host) → J/token i sistemit.
+join_energy.py — Join the requests CSV (benchmark) with the power CSV (host) → system J/token.
 
-Për çdo kërkesë, integron fuqinë e sistemit mbi dritaren [t_start_unix, t_end_unix] me rregull
-trapezoidal, zbret idle baseline → energji inkrementale; pjesëton me eval_count → J/token sistemi.
-Agregon median + IQR për (model, num_ctx).
+For every request it integrates system power over the window [t_start_unix, t_end_unix] using
+the trapezoidal rule, subtracts the idle baseline → incremental energy; dividing by eval_count
+gives system J/token. Results are aggregated as median + IQR per (model, num_ctx).
 
-Kërkon që host-i (power) dhe VM-ja (requests) të jenë NTP-sync (janë).
+Requires the host (power) and the VM (requests) to be NTP-synchronised.
 
-Përdorim:
-  python3 join_energy.py --requests results/requests_vm105-energy_*.csv \
-                         --power power_vm105-energy.csv --out results/energy_vm105.csv
-Idle: jepe me --idle-w, ose lihet auto = perc.10 e watt-eve (përafrim i idle-it).
+Usage:
+  python3 join_energy.py --requests results/requests_energy_*.csv \
+                         --power power_energy.csv --out results/energy.csv
+Idle: pass it via --idle-w, or leave it automatic = 10th percentile of the wattage.
 """
 import argparse, csv, statistics
 from pathlib import Path
@@ -64,7 +64,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--requests", required=True)
     ap.add_argument("--power", required=True)
-    ap.add_argument("--idle-w", type=float, default=None, help="watt idle; auto=perc.10 nëse mungon")
+    ap.add_argument("--idle-w", type=float, default=None, help="idle wattage; auto = 10th percentile if omitted")
     ap.add_argument("--out", default="energy_summary.csv")
     args = ap.parse_args()
 
@@ -72,7 +72,7 @@ def main():
     if len(power) < 2:
         raise SystemExit("Power CSV bosh ose i pamjaftueshëm.")
     idle = args.idle_w if args.idle_w is not None else percentile([w for _, w in power], 10)
-    print(f"# mostra fuqie: {len(power)} | idle baseline = {idle:.1f} W "
+    print(f"# power samples: {len(power)} | idle baseline = {idle:.1f} W "
           f"({'e dhënë' if args.idle_w is not None else 'auto perc.10'})")
 
     rows = list(csv.DictReader(open(args.requests)))

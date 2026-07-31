@@ -1,29 +1,27 @@
 #!/usr/bin/env python3
 """
-bench_llm.py — Benchmark i inferencës së LLM-ve lokale (Ollama) në GPU modeste (NVIDIA T400 4GB)
+bench_llm.py — Benchmark of local LLM inference (Ollama) on a modest GPU (NVIDIA T400 4 GB)
 
-Mat për çdo (model × num_ctx × përsëritje):
-  - Throughput gjenerimi (tokens/s)          nga eval_count / eval_duration
-  - Prompt eval rate (tokens/s)              nga prompt_eval_count / prompt_eval_duration
-  - Time-to-first-token TTFT (ms)            nga koha e kërkesës te chunk-u i parë
-  - Latency total (ms)                       nga kërkesa te përfundimi
-  - VRAM peak (MB), fuqi GPU avg/max (W)     nga sampler-i nvidia-smi
-  - Energji GPU (J) & J/token                integral trapezoidal i fuqisë − idle baseline
-  - % ofloadim GPU/CPU                        nga `ollama ps`
-Test konkurrence (1/2/4/8 kërkesa paralele) → degradim per-user & throughput agregat.
+Measured for every (model × num_ctx × repetition):
+  - Generation throughput (tokens/s)         from eval_count / eval_duration
+  - Prompt eval rate (tokens/s)              from prompt_eval_count / prompt_eval_duration
+  - Time-to-first-token TTFT (ms)            from request dispatch to the first chunk
+  - Total latency (ms)                       from request to completion
+  - Peak VRAM (MB), GPU power avg/max (W)    from the nvidia-smi sampler
+  - GPU energy (J) & J/token                 trapezoidal integral of power − idle baseline
+  - GPU/CPU offload split (%)                from `ollama ps`
+Concurrency test (1/2/4/8 parallel requests) → per-user degradation & aggregate throughput.
 
-RQ2 kërkon që dritarja e kontekstit (num_ctx = alokimi i KV-cache) të jetë variabël
-E KONTROLLUAR: prandaj kalojmë `num_ctx` eksplicit te Ollama. Përndryshe Ollama
-alokon 4096 by default dhe efekti i kontekstit del i sheshtë. Gjatësia e prompt-it
-(input) mbahet fikse (--prompt-tokens); num_ctx varion (--ctx).
+RQ2 requires the context window (num_ctx = the KV-cache allocation) to be a CONTROLLED
+variable, so `num_ctx` is passed explicitly to Ollama. Otherwise Ollama allocates 4096 by
+default and the context effect appears flat. The prompt (input) length is held fixed
+(--prompt-tokens) while num_ctx is varied (--ctx).
 
-Referencë: projects/research/Papers/Paper1-LLM-Benchmark-T400.md
+Design: the script runs INSIDE the GPU-equipped VM (local Ollama + local nvidia-smi), so
+that GPU samples and requests share the same clock. It can also run against a remote host
+(--host), in which case pass --no-gpu since nvidia-smi is not local.
 
-Dizajni: script-i xhiron NË VM-në me GPU (localhost Ollama + nvidia-smi lokal),
-që GPU-samples dhe kërkesat të kenë të njëjtin timestamp. Mund të xhirojë edhe
-remote (--host tjetër) por atëherë kalo --no-gpu (nvidia-smi s'është lokal).
-
-Autor: AI-LAB / FIE Measurement Lab
+Author: AI-LAB / FIE Measurement Lab
 """
 
 from __future__ import annotations
@@ -44,19 +42,19 @@ from urllib import request as urlrequest
 from urllib.error import URLError
 
 # ----------------------------------------------------------------------------
-# Konfigurim default (mbishkruhet nga argumentët CLI)
+# Default configuration (overridden by CLI arguments)
 # ----------------------------------------------------------------------------
 
 DEFAULT_MODELS = ["qwen2.5:1.5b", "phi3.5", "qwen2.5-coder:7b", "phi4"]
-DEFAULT_CTX_LENS = [512, 2048, 8192]  # num_ctx = dritarja e alokuar KV (variabla e RQ2)
-DEFAULT_PROMPT_TOKENS = 128           # gjatësi fikse prompt-i (input); num_ctx varion veç
+DEFAULT_CTX_LENS = [512, 2048, 8192]  # num_ctx = allocated KV window (the RQ2 variable)
+DEFAULT_PROMPT_TOKENS = 128           # fixed prompt (input) length; num_ctx varies separately
 DEFAULT_REPS = 10
-DEFAULT_NUM_PREDICT = 128             # token gjenerimi (fiks për krahasim të drejtë)
+DEFAULT_NUM_PREDICT = 128             # generated tokens (fixed, for a fair comparison)
 DEFAULT_CONCURRENCY = [1, 2, 4, 8]
-GPU_SAMPLE_MS = 100                   # hap kampionimi nvidia-smi (~100ms për per-token)
+GPU_SAMPLE_MS = 100                   # nvidia-smi sampling interval (~100 ms)
 
-# Fjalë filler për të ndërtuar prompt-e me gjatësi të kontrolluar.
-# prompt_eval_count real raportohet nga Ollama; kjo është vetëm për të mbushur.
+# Filler words used to build prompts of a controlled length.
+# The real prompt_eval_count is reported by Ollama; this only pads the text.
 _FILLER = (
     "The measurement laboratory records temperature humidity voltage current power "
     "and energy across many sensors while the system evaluates each token in sequence "
@@ -64,21 +62,21 @@ _FILLER = (
 
 
 # ----------------------------------------------------------------------------
-# Sampler-i i nvidia-smi (thread në sfond)
+# nvidia-smi sampler (background thread)
 # ----------------------------------------------------------------------------
 
 @dataclass
 class GpuSample:
-    t: float          # time.time() në momentin e leximit
+    t: float          # time.time() at the moment of the reading
     mem_used: float   # MB
     mem_total: float  # MB
     util: float       # %
     temp: float       # °C
-    power: float      # W  (nan nëse N/A)
+    power: float      # W  (nan if N/A)
 
 
 class GpuSampler:
-    """Xhiron `nvidia-smi ... -lms N` si subprocess dhe lexon rreshtat në vazhdim."""
+    """Runs `nvidia-smi ... -lms N` as a subprocess and reads its lines continuously."""
 
     QUERY = "memory.used,memory.total,utilization.gpu,temperature.gpu,power.draw"
 
@@ -108,7 +106,7 @@ class GpuSampler:
                 except ValueError:
                     return float("nan")
             power = _f(parts[4])
-            if power != power:  # nan → power.draw i pambështetur në këtë kartë
+            if power != power:  # nan → power.draw unsupported on this card
                 self.power_supported = False
             self.samples.append(GpuSample(
                 t=t, mem_used=_f(parts[0]), mem_total=_f(parts[1]),
@@ -117,7 +115,7 @@ class GpuSampler:
 
     def start(self):
         if not self.available:
-            print("[gpu] nvidia-smi nuk u gjet — GPU sampling i çaktivizuar.", file=sys.stderr)
+            print("[gpu] nvidia-smi not found — GPU sampling disabled.", file=sys.stderr)
             return
         cmd = [
             "nvidia-smi", f"--id={self.gpu_index}",
@@ -146,8 +144,8 @@ class GpuSampler:
         return [s for s in self.samples if t0 <= s.t <= t1]
 
     def idle_power(self, seconds: float = 5.0) -> float:
-        """Mat fuqinë idle (asnjë ngarkesë) → mesatare W. nan nëse s'ka power."""
-        print(f"[gpu] mat idle baseline për {seconds:.0f}s ...", file=sys.stderr)
+        """Measure idle power (no load) → mean W. nan if power is unavailable."""
+        print(f"[gpu] measuring idle baseline for {seconds:.0f}s ...", file=sys.stderr)
         t0 = time.time()
         time.sleep(seconds)
         w = self.window(t0, time.time())
@@ -156,7 +154,7 @@ class GpuSampler:
 
 
 def trapezoid_energy(samples: list[GpuSample], idle_w: float = 0.0) -> float:
-    """Energji (J) = ∫ P dt me rregull trapezoidal, minus idle baseline."""
+    """Energy (J) = ∫ P dt by the trapezoidal rule, minus the idle baseline."""
     pts = [(s.t, s.power) for s in samples if s.power == s.power]
     if len(pts) < 2:
         return float("nan")
@@ -169,7 +167,7 @@ def trapezoid_energy(samples: list[GpuSample], idle_w: float = 0.0) -> float:
 
 
 # ----------------------------------------------------------------------------
-# Klienti Ollama
+# Ollama client
 # ----------------------------------------------------------------------------
 
 @dataclass
@@ -194,12 +192,12 @@ class GenResult:
     energy_j: float = float("nan")       # GPU, inkremental (− idle)
     j_per_token: float = float("nan")
     gpu_offload_pct: float = float("nan")
-    t_start_unix: float = float("nan")   # epoch për bashkim me power-log të host-it
+    t_start_unix: float = float("nan")   # epoch, for joining with the host power log
     t_end_unix: float = float("nan")
 
 
 def build_prompt(target_tokens: int) -> str:
-    # ~0.75 fjalë/token si përafrim; gjatësia reale merret nga prompt_eval_count.
+    # ~0.75 words/token as an approximation; the real length comes from prompt_eval_count.
     n_words = max(4, int(target_tokens * 0.75))
     words = (_FILLER * (n_words // len(_FILLER) + 1))[:n_words]
     return "Summarize the following log verbatim then continue: " + " ".join(words)
@@ -239,7 +237,7 @@ def ollama_generate(host: str, model: str, prompt: str, num_predict: int,
 
 
 def ollama_unload(host: str, model: str):
-    """Shkarko modelin nga VRAM (keep_alive=0) për matje cold-start."""
+    """Unload the model from VRAM (keep_alive=0) for cold-start measurements."""
     url = f"{host.rstrip('/')}/api/generate"
     payload = {"model": model, "keep_alive": 0}
     try:
@@ -276,7 +274,7 @@ def gpu_offload_pct(model: str) -> float:
 
 
 # ----------------------------------------------------------------------------
-# Ekzekutimi i një kërkese + bashkimi me GPU-samples
+# Executing a single request + joining it with the GPU samples
 # ----------------------------------------------------------------------------
 
 def run_one(host: str, sampler: GpuSampler, idle_w: float, model: str,
@@ -326,7 +324,7 @@ def run_one(host: str, sampler: GpuSampler, idle_w: float, model: str,
 
 def run_concurrency(host: str, sampler: GpuSampler, model: str, target_ctx: int,
                     num_predict: int, n_parallel: int, prompt_tokens: int) -> dict:
-    """N kërkesa paralele → throughput agregat & per-user."""
+    """N parallel requests → aggregate & per-user throughput."""
     prompt = build_prompt(prompt_tokens)
     results: list[dict] = []
     lock = threading.Lock()
@@ -388,22 +386,22 @@ def median_iqr(xs: list[float]) -> tuple[float, float, float]:
 def main():
     ap = argparse.ArgumentParser(description="Benchmark LLM lokale (Ollama) në GPU modeste.")
     ap.add_argument("--host", default="http://127.0.0.1:11434",
-                    help="Ollama API (default localhost; p.sh. http://192.168.20.50:11434)")
+                    help="Ollama API base URL (default localhost; e.g. http://10.0.0.5:11434)")
     ap.add_argument("--models", nargs="+", default=DEFAULT_MODELS)
     ap.add_argument("--ctx", nargs="+", type=int, default=DEFAULT_CTX_LENS,
-                    help="num_ctx: dritaret KV të alokuara (variabla e RQ2)")
+                    help="num_ctx: allocated KV windows (the RQ2 variable)")
     ap.add_argument("--prompt-tokens", type=int, default=DEFAULT_PROMPT_TOKENS,
-                    help="gjatësi fikse prompt-i (input)")
+                    help="fixed prompt (input) length")
     ap.add_argument("--reps", type=int, default=DEFAULT_REPS)
     ap.add_argument("--num-predict", type=int, default=DEFAULT_NUM_PREDICT)
     ap.add_argument("--concurrency", nargs="+", type=int, default=DEFAULT_CONCURRENCY)
     ap.add_argument("--gpu-index", type=int, default=0)
-    ap.add_argument("--no-gpu", action="store_true", help="Çaktivizo nvidia-smi (matje remote).")
+    ap.add_argument("--no-gpu", action="store_true", help="Disable nvidia-smi (remote measurement).")
     ap.add_argument("--no-concurrency", action="store_true")
     ap.add_argument("--cold-start", action="store_true",
-                    help="Shkarko modelin para çdo grupi të parë (mat load_duration).")
+                    help="Unload the model before each first batch (measures load_duration).")
     ap.add_argument("--outdir", default="results")
-    ap.add_argument("--label", default="", help="Etiketë (p.sh. vm105-16gb).")
+    ap.add_argument("--label", default="", help="Label (e.g. 16gb).")
     args = ap.parse_args()
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -437,8 +435,8 @@ def main():
                     ollama_unload(args.host, model)
                     time.sleep(2)
                 else:
-                    # warm-up (nuk numërohet) — ngarkon modelin në VRAM, mund të zgjasë 10–40s
-                    print(f"[warm-up] ngarkoj {model} (num_ctx={ctx}) — prit, s'ka ngrirë ...",
+                    # warm-up (not counted) — loads the model into VRAM, may take 10-40 s
+                    print(f"[warm-up] loading {model} (num_ctx={ctx}) — please wait, not frozen ...",
                           flush=True)
                     try:
                         ollama_generate(args.host, model, build_prompt(args.prompt_tokens),
@@ -490,8 +488,8 @@ def main():
               + (f"\n  {con_csv}" if con_rows else "")
               + f"\n  {meta_json}")
         if not sampler.power_supported and not args.no_gpu:
-            print("\n⚠️  power.draw ktheu N/A në këtë GPU — energjia GPU (J/token) s'u llogarit.\n"
-                  "    Mbështetu te iDRAC/smart-plug për energjinë e sistemit (shih Paper1 §Energji).")
+            print("\n⚠️  power.draw returned N/A on this GPU — GPU energy (J/token) was not computed.\n"
+                  "    Fall back to BMC/IPMI or a smart plug for system energy (see the energy section).")
 
 
 def _write_requests(path: Path, results: list[GenResult]):

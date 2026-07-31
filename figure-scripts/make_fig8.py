@@ -4,9 +4,9 @@ import numpy as np
 # sys J/token @512, throughput @512 (vm105-16gb)
 J={"qwen2.5:1.5b":0.676,"phi3.5":1.441,"qwen2.5-coder:7b":7.483,"phi4":17.541}
 TPS={"qwen2.5:1.5b":41.7,"phi3.5":20.2,"qwen2.5-coder:7b":3.30,"phi4":2.00}
-# cloud reference €/1M output token (serverless, ~2026, të përafërta, USD→EUR 0.92)
+# cloud reference EUR/1M output tokens (serverless, ~2026, approximate, USD->EUR 0.92)
 CLOUD={"qwen2.5:1.5b":0.09,"phi3.5":0.14,"qwen2.5-coder:7b":0.18,"phi4":0.28}
-ELEC=0.10  # €/kWh (Shqipëri, amvisëri ~ALL 10.2)
+ELEC=0.10  # EUR/kWh (Albania, household tariff ~ALL 10.2)
 ORDER=["qwen2.5:1.5b","phi3.5","qwen2.5-coder:7b","phi4"]
 PAR={"qwen2.5:1.5b":"1.5B","phi3.5":"3.8B","qwen2.5-coder:7b":"7.6B","phi4":"14.7B"}
 def eur_per_M(m): return J[m]*1e6/3.6e6*ELEC   # kWh/1M × €/kWh
