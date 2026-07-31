@@ -27,7 +27,7 @@ version: "1.1.0"
 date-released: "2026-07-31"
 license: MIT
 repository-code: "https://github.com/gsharko/t400-llm-bench"
-doi: "10.5281/zenodo.21202755"
+doi: "10.5281/zenodo.21202754"
 keywords:
   - large language models
   - GPU benchmarking
