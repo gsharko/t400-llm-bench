@@ -21,7 +21,7 @@ Companion artifact for the paper:
 | `scripts/quality_bench.py` | Quantization quality: MMLU-STEM subset (600 questions, 0-shot) and HumanEval (164 problems, pass@1, sandboxed subprocess execution). Downloads datasets automatically. |
 | `scripts/PROTOCOL-Quality.md` | Measurement protocol for the quality campaign (model tags, run plan, methodological decisions). |
 | `results/*.csv` | Raw measurement summaries: per-configuration performance (VM105 16 GB / 8 GB, VM100), concurrency, system energy, MMLU and HumanEval rows + summaries. |
-| `figures/*.png` | Figures 1–10 as used in the paper. |
+| `figures/*.png` | All 13 figures as used in the paper (see the figure map below). |
 | `figure-scripts/*.py` | Matplotlib scripts that regenerate every figure from `results/`. |
 
 ## Requirements
@@ -47,6 +47,24 @@ cd figure-scripts && for f in make_*.py; do python3 "$f"; done
 
 ⚠️ `quality_bench.py humaneval` **executes model-generated code** (subprocess,
 15 s timeout). Run it only inside a disposable VM.
+
+## Figure map (paper number → file)
+
+| Paper | File | Content |
+|---|---|---|
+| Fig. 1 | `fig0_architecture.png` | Measurement architecture (VM, sampling, BMC energy path) |
+| Fig. 2 | `fig_frontier.png` | Usability frontier: GPU residency × throughput over model size × context |
+| Fig. 3 | `fig1_throughput_vs_ctx.png` | Throughput vs. context window |
+| Fig. 4 | `fig2_throughput_vs_size.png` | Throughput vs. model size (offloading cliff) |
+| Fig. 5 | `fig3_offload_vs_ctx.png` | GPU residency vs. context window |
+| Fig. 6 | `fig4_concurrency.png` | Concurrency: per-user vs. aggregate |
+| Fig. 7 | `fig5_vm100_vs_vm105.png` | Cross-host CPU effect (8 vs. 4 vCPU) |
+| Fig. 8 | `fig6_ram_isolated.png` | Isolated RAM effect (8 vs. 16 GB, same VM) |
+| Fig. 9 | `fig7_energy.png` | System energy per token |
+| Fig. 10 | `fig8_cost.png` | Cost and wall-time per 1M tokens (local vs. cloud) |
+| Fig. 11 | `fig9_quality_mmlu.png` | MMLU-STEM accuracy vs. quantization |
+| Fig. 12 | `fig10_quality_humaneval.png` | HumanEval pass@1 vs. quantization and size |
+| Fig. 13 | `fig_qualfront.png` | Quality–footprint frontier vs. the ~2.6 GB usable-VRAM ceiling |
 
 ## Measurement conditions
 
