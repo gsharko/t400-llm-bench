@@ -6,10 +6,10 @@ entry-level 4 GB GPU (NVIDIA T400)** in a virtualized laboratory server
 
 Companion artifact for the paper:
 
-> *Benchmarking Local LLM Inference on Entry-Level 4 GB GPUs: Throughput,
-> Energy, and Quantization Trade-offs on the NVIDIA T400 for
-> Resource-Constrained Laboratories* — Measurement Laboratory, Faculty of
-> Electrical Engineering, Polytechnic University of Tirana. (Under review.)
+> *Parameters Beat Precision: A Measured Residency Frontier for Local Large
+> Language Model Inference Under a 4 GB Memory Budget* — Measurement
+> Laboratory, Faculty of Electrical Engineering, Polytechnic University of
+> Tirana. (In preparation for submission to The Journal of Supercomputing.)
 
 ## Contents
 

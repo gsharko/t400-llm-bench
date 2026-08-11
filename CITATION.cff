@@ -37,8 +37,8 @@ identifiers:
     description: "Version DOI for v1.1.0."
 keywords:
   - large language models
-  - GPU benchmarking
-  - edge inference
+  - local inference
+  - memory-bound performance
   - quantization
-  - energy efficiency
-  - systems architecture
+  - energy per token
+  - resource-constrained computing
